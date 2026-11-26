@@ -1,6 +1,6 @@
 # nSedo VIP
 
-Bangla-first search for open Robi and Airtel mobile numbers in Bangladesh. Pick an operator, one or more number blocks, and a pattern. nSedo checks those numbers on the operator’s public availability service and lists only the ones that are still open, with a VIP score, a copy button, and a link to buy on the operator’s own site.
+Bangla-first search for open Robi and Airtel mobile numbers in Bangladesh. Type digits or a pattern, or tap a quick pattern. nSedo checks the full space on the operator’s public availability service until you stop it, and lists only numbers that are still open, with a VIP score, a copy button, and a link to buy on the operator’s own site.
 
 nSedo does not take payment or personal data. It is not a mobile operator, and it is not affiliated with Robi, Airtel, Cirkle, Grameenphone, Banglalink, or Teletalk.
 
@@ -22,11 +22,12 @@ Verified on 26 November 2026: both brands returned `SUCCESSFUL`, and a number fr
 
 ## Patterns
 
-- Repeated digit, sequence, mirror (ABBA), pair (ABAB), exact ending, or a custom 11-digit mask (`X` is any digit).
-- The motif can sit at the start, middle, or end. An exact ending always sits at the end.
-- Several series (0180–0189 or 0160–0169) can be scanned in one pass, with an optional tighter block such as `01815`.
-- Spaces of 150 numbers or fewer are checked in full. Wider spaces are sampled, up to the cap (40 / 80 / 160 / 320), spread across the selected blocks.
-- The browser sends about two checks a second, backs off on HTTP 429 and 5xx, and stops the scan after five failures in a row.
+- A single box. `5555` or `1234` searches that ending on both Robi and Airtel. `018XX5555` is expanded to an 11-digit mask. `01815` searches that whole block. `01011990` is treated as a birthday-style ending.
+- Quick chips cover 0000–9999, a few sequences, 1212, last-3-same, last-4-same, and a birthday field.
+- There is no sample cap. The scan walks every candidate, streaming open numbers as they are found, until you stop it or the space is finished. Stop, then “keep searching”, continues from the same place.
+- Advanced options (collapsed) choose one operator, where a short digit pattern sits, and an optional block.
+- The browser keeps about two checks in flight and spaces them by roughly half a second. HTTP 429 and 5xx back off and retry. After repeated failures the scan pauses instead of discarding the place, and resume continues. Checked numbers are remembered in this browser for the session so a repeat search skips them.
+- Grameenphone, Banglalink, and Teletalk stay marked coming soon.
 
 VIP score (1–99) is computed from the number itself: repeated digits, sequences, ABAB, mirrors, palindromes, and how few distinct digits it uses. Ending patterns score higher. Sort by score or by number.
 

@@ -8,10 +8,14 @@ export interface Availability {
 
 const TIMEOUT_MS = 12_000
 
-function busyError(): Error {
-  const error = new Error('busy')
-  error.name = 'BusyError'
-  return error
+export class OperatorError extends Error {
+  readonly httpStatus: number
+
+  constructor(httpStatus: number) {
+    super(httpStatus === 429 ? 'rate-limit' : 'busy')
+    this.name = httpStatus === 429 ? 'RateLimitError' : 'OperatorError'
+    this.httpStatus = httpStatus
+  }
 }
 
 async function once(intl: string, brand: Brand, signal: AbortSignal): Promise<Availability> {
@@ -33,7 +37,7 @@ async function once(intl: string, brand: Brand, signal: AbortSignal): Promise<Av
       credentials: 'omit',
       cache: 'no-store',
     })
-    if (res.status === 429 || res.status >= 500) throw busyError()
+    if (res.status === 429 || res.status >= 500) throw new OperatorError(res.status)
     if (!res.ok) throw new Error(`http-${res.status}`)
     const data: unknown = await res.json()
     if (!data || typeof data !== 'object') throw new Error('bad-json')

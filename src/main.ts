@@ -1,16 +1,19 @@
 import { checkAvailability } from './api.ts'
+import { loadChecked, note, saveChecked, verdict, type CacheRow } from './cache.ts'
 import { formatCount, groupLocal } from './format.ts'
 import { translate, type MessageKey } from './i18n.ts'
-import { operatorById, operatorByPrefix, seriesOf, type Lang, type OperatorId } from './operators.ts'
-import { buildPlan, type PatternKind, type Plan, type Position, type SearchInput, type SeqDir } from './pattern.ts'
+import { operatorById, operatorByPrefix, type Brand, type Lang } from './operators.ts'
+import { matchesMask } from './pattern.ts'
+import { createCursor, parseQuery, planSameEnding, type CandidateCursor, type QueryOptions, type QueryPlan } from './query.ts'
 import { scan, type Progress } from './scan.ts'
 import { vipScore, type VipScore } from './score.ts'
 
-type Phase = 'idle' | 'running' | 'done' | 'stopped' | 'error'
+type Phase = 'idle' | 'running' | 'paused' | 'stopped' | 'done'
+type Special = null | 'same3' | 'same4'
 
 interface StoredHit {
   local: string
-  intl: string
+  brand: Brand
   score: VipScore
 }
 
@@ -18,17 +21,10 @@ const langBtn = document.querySelector<HTMLButtonElement>('#langBtn')!
 const themeBtn = document.querySelector<HTMLButtonElement>('#themeBtn')!
 const iconSun = document.querySelector<SVGElement>('#iconSun')!
 const iconMoon = document.querySelector<SVGElement>('#iconMoon')!
-
-function setHidden(el: Element, hidden: boolean) {
-  if (hidden) el.setAttribute('hidden', '')
-  else el.removeAttribute('hidden')
-}
 const form = document.querySelector<HTMLFormElement>('#search')!
-const fields = document.querySelector<HTMLFieldSetElement>('#fields')!
+const queryInput = document.querySelector<HTMLInputElement>('#q')!
+const quickBox = document.querySelector<HTMLDivElement>('#quick')!
 const blockInput = document.querySelector<HTMLInputElement>('#blockInput')!
-const chipBox = document.querySelector<HTMLDivElement>('#chipBox')!
-const allSeriesBtn = document.querySelector<HTMLButtonElement>('#allSeriesBtn')!
-const digitsBox = document.querySelector<HTMLDivElement>('#digits')!
 const preview = document.querySelector<HTMLParagraphElement>('#preview')!
 const planNote = document.querySelector<HTMLParagraphElement>('#planNote')!
 const scanBtn = document.querySelector<HTMLButtonElement>('#scanBtn')!
@@ -36,121 +32,128 @@ const progress = document.querySelector<HTMLDivElement>('#progress')!
 const bar = document.querySelector<HTMLDivElement>('#bar')!
 const barFill = document.querySelector<HTMLSpanElement>('#barFill')!
 const progressText = document.querySelector<HTMLParagraphElement>('#progressText')!
+const rateNote = document.querySelector<HTMLParagraphElement>('#rateNote')!
 const resultsList = document.querySelector<HTMLOListElement>('#resultsList')!
 const resultsMeta = document.querySelector<HTMLParagraphElement>('#resultsMeta')!
 const empty = document.querySelector<HTMLParagraphElement>('#empty')!
 const live = document.querySelector<HTMLParagraphElement>('#live')!
 const sortSelect = document.querySelector<HTMLSelectElement>('#sort')!
-const capSelect = document.querySelector<HTMLSelectElement>('#capSelect')!
-const customInput = document.querySelector<HTMLInputElement>('#customInput')!
-const endingInput = document.querySelector<HTMLInputElement>('#endingInput')!
-const pairA = document.querySelector<HTMLInputElement>('#pairA')!
-const pairB = document.querySelector<HTMLInputElement>('#pairB')!
-const seqStart = document.querySelector<HTMLSelectElement>('#seqStart')!
+const resultFilter = document.querySelector<HTMLInputElement>('#resultFilter')!
 const footRobi = document.querySelector<HTMLAnchorElement>('#footRobi')!
 const footAirtel = document.querySelector<HTMLAnchorElement>('#footAirtel')!
-const panelBlock = document.querySelector<HTMLDivElement>('#panelBlock')!
-const panelRepeat = document.querySelector<HTMLDivElement>('#panelRepeat')!
-const panelSeq = document.querySelector<HTMLDivElement>('#panelSeq')!
-const panelPair = document.querySelector<HTMLDivElement>('#panelPair')!
-const panelEnding = document.querySelector<HTMLDivElement>('#panelEnding')!
-const panelCustom = document.querySelector<HTMLDivElement>('#panelCustom')!
-const panelPos = document.querySelector<HTMLDivElement>('#panelPos')!
+
+const QUICK: { id: string; text?: string; key?: MessageKey }[] = [
+  ...['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999'].map((id) => ({ id, text: id })),
+  { id: '1234', text: '1234' },
+  { id: '6789', text: '6789' },
+  { id: '9876', text: '9876' },
+  { id: '0123', text: '0123' },
+  { id: '1212', text: '1212' },
+  { id: 'same3', key: 'same3' },
+  { id: 'same4', key: 'same4' },
+  { id: 'birthday', key: 'birthday' },
+]
+
+function setHidden(el: Element, hidden: boolean) {
+  if (hidden) el.setAttribute('hidden', '')
+  else el.removeAttribute('hidden')
+}
 
 let lang: Lang = localStorage.getItem('nsedo-lang') === 'en' ? 'en' : 'bn'
 let theme: 'light' | 'dark' = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
 let followSystem = localStorage.getItem('nsedo-theme') === null
-let repeatDigit = 5
-let selectedChips = new Set<string>()
-let kindBeforeCustom: PatternKind = 'repeat'
-let running = false
+let special: Special = null
+let activeQuick = ''
 let phase: Phase = 'idle'
+let running = false
 let hits: StoredHit[] = []
-let activeMotif = ''
+let cursor: CandidateCursor | null = null
+let masks: string[] = []
+let planSignature = ''
+let activeLabel = ''
 let lastProgress: Progress | null = null
 let abort: AbortController | null = null
-let sortMode: 'score' | 'number' = 'score'
+let resumeResolve: (() => void) | null = null
+let generation = 0
+let tail: Promise<void> = Promise.resolve()
+let sortMode: 'score' | 'number' | 'operator' = 'score'
+let filterBrand: 'all' | Brand = 'all'
+let filterText = ''
 let freshLocal = ''
+let paint = 0
+let saves = 0
+let cache: Map<string, CacheRow> = new Map()
+
+try {
+  cache = loadChecked(localStorage)
+} catch {
+  cache = new Map()
+}
 
 function t(key: MessageKey, ...args: string[]): string {
   return translate(lang, key, ...args)
 }
 
-function currentOp() {
-  const picked = form.querySelector<HTMLInputElement>('input[name="op"]:checked')?.value
-  const id: OperatorId = picked === 'airtel' ? 'airtel' : 'robi'
-  return operatorById(id)
+function readOptions(): QueryOptions {
+  const scope = form.querySelector<HTMLInputElement>('input[name="scope"]:checked')?.value
+  const position = form.querySelector<HTMLInputElement>('input[name="pos"]:checked')?.value
+  const operators: QueryOptions['operators'] = scope === 'robi' || scope === 'airtel' ? scope : 'all'
+  const place: QueryOptions['position'] = position === 'start' || position === 'middle' ? position : 'end'
+  return { operators, position: place, block: blockInput.value }
 }
 
-function currentKind(): PatternKind {
-  const value = form.querySelector<HTMLInputElement>('input[name="kind"]:checked')?.value
-  if (value === 'sequence' || value === 'mirror' || value === 'abab' || value === 'ending' || value === 'custom') return value
-  return 'repeat'
+function currentPlan(): QueryPlan {
+  const options = readOptions()
+  if (special === 'same3') return planSameEnding(3, options)
+  if (special === 'same4') return planSameEnding(4, options)
+  return parseQuery(queryInput.value, options)
 }
 
-function radioValue(name: string, fallback: string): string {
-  return form.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? fallback
+function signature(plan: Extract<QueryPlan, { ok: true }>): string {
+  return `${plan.total}|${plan.jobs.map((item) => item.brand + item.mask).join(',')}`
 }
 
-function readInput(): SearchInput {
-  const op = currentOp()
-  const blocks = [...selectedChips]
-  const custom = blockInput.value.replace(/\D/g, '')
-  if (custom) blocks.push(custom)
-  return {
-    prefix: op.prefix,
-    blocks,
-    kind: currentKind(),
-    position: radioValue('pos', 'end') as Position,
-    repeatDigit,
-    repeatLen: Number(radioValue('rlen', '4')),
-    seqStart: Number(seqStart.value),
-    seqLen: Number(radioValue('seqlen', '4')),
-    seqDir: radioValue('seqdir', 'up') as SeqDir,
-    pairA: Number(pairA.value || '0'),
-    pairB: Number(pairB.value || '0'),
-    ending: endingInput.value.replace(/\D/g, '').slice(0, 6),
-    customMask: customInput.value,
-    cap: Number(capSelect.value),
+function syncButton() {
+  const plan = currentPlan()
+  let key: MessageKey = 'startScan'
+  let stopping = false
+  if (running && phase === 'paused') key = 'resume'
+  else if (running) {
+    key = 'stop'
+    stopping = true
+  } else if (cursor && lastProgress && lastProgress.checked < lastProgress.total && plan.ok && signature(plan) === planSignature) {
+    key = 'more'
   }
+  scanBtn.textContent = t(key)
+  scanBtn.classList.toggle('is-stop', stopping)
+  scanBtn.disabled = key === 'startScan' && !plan.ok
 }
 
-function syncPanels() {
-  const kind = currentKind()
-  panelBlock.hidden = kind === 'custom'
-  panelRepeat.hidden = kind !== 'repeat'
-  panelSeq.hidden = kind !== 'sequence'
-  panelPair.hidden = kind !== 'mirror' && kind !== 'abab'
-  panelEnding.hidden = kind !== 'ending'
-  panelCustom.hidden = kind !== 'custom'
-  panelPos.hidden = kind === 'ending' || kind === 'custom'
+function updatePreview() {
+  const plan = currentPlan()
+  const box = preview.parentElement
+  if (!plan.ok) {
+    if (box) box.hidden = plan.error === 'empty'
+    preview.textContent = '—'
+    planNote.textContent = plan.error === 'empty' ? '' : t(`err_${plan.error}` as MessageKey)
+    planNote.classList.toggle('is-bad', plan.error !== 'empty')
+    syncButton()
+    return
+  }
+  if (box) box.hidden = false
+  planNote.classList.remove('is-bad')
+  const shown = plan.jobs.slice(0, 2).map((item) => groupLocal(item.mask))
+  preview.textContent = plan.jobs.length > 2 ? `${shown.join('  ·  ')}  ·  +${plan.jobs.length - 2}` : shown.join('  ·  ')
+  planNote.textContent = t('planFull', formatCount(plan.total, lang))
+  syncButton()
 }
 
-function syncScanButton() {
-  scanBtn.textContent = t(running ? 'stop' : 'startScan')
-  scanBtn.classList.toggle('is-stop', running)
-  scanBtn.setAttribute('aria-pressed', running ? 'true' : 'false')
-}
-
-function syncSeriesButton() {
-  const chips = [...chipBox.querySelectorAll<HTMLButtonElement>('.chip')]
-  const allOn = chips.length > 0 && chips.every((chip) => chip.getAttribute('aria-pressed') === 'true')
-  allSeriesBtn.textContent = t(allOn ? 'clearSeries' : 'allSeries')
-}
-
-function syncThemeButton() {
-  const dark = theme === 'dark'
-  themeBtn.setAttribute('aria-pressed', dark ? 'true' : 'false')
-  themeBtn.setAttribute('aria-label', t(dark ? 'themeToLight' : 'themeToDark'))
-  setHidden(iconSun, !dark)
-  setHidden(iconMoon, dark)
-}
-
-function applyTheme(next: 'light' | 'dark') {
-  theme = next
-  document.documentElement.dataset.theme = next
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#14202B' : '#F3F5F8')
-  syncThemeButton()
+function visibleHits(): StoredHit[] {
+  return hits.filter((hit) => {
+    if (filterBrand !== 'all' && hit.brand !== filterBrand) return false
+    if (filterText && !hit.local.includes(filterText)) return false
+    return true
+  })
 }
 
 function tagText(tag: string): string {
@@ -162,27 +165,36 @@ function tagText(tag: string): string {
 }
 
 function updateEmpty() {
-  empty.hidden = hits.length > 0
-  if (hits.length) return
+  const shown = visibleHits()
+  empty.hidden = shown.length > 0
+  if (shown.length) return
+  if (hits.length) {
+    empty.textContent = t('emptyFilter')
+    return
+  }
   const key: MessageKey =
-    phase === 'running' ? 'emptyRunning' : phase === 'error' ? 'emptyError' : phase === 'done' || phase === 'stopped' ? 'emptyNone' : 'emptyIdle'
+    phase === 'running' || phase === 'paused' ? 'emptyRunning' : phase === 'done' || phase === 'stopped' ? 'emptyNone' : 'emptyIdle'
   empty.textContent = t(key)
 }
 
 function updateProgress() {
-  if (!lastProgress) return
+  if (!lastProgress && phase === 'idle') return
   progress.hidden = false
-  const pct = lastProgress.total ? Math.min(100, Math.round((lastProgress.checked / lastProgress.total) * 100)) : 0
-  const settled = phase === 'done' || phase === 'stopped' || phase === 'error'
-  barFill.style.width = `${settled ? 100 : pct}%`
-  bar.setAttribute('aria-valuenow', String(settled ? 100 : pct))
+  const total = lastProgress?.total ?? 0
+  const checked = lastProgress?.checked ?? 0
+  const pct = total ? Math.min(100, Math.round((checked / total) * 100)) : 0
+  barFill.style.width = `${phase === 'done' ? 100 : pct}%`
+  bar.setAttribute('aria-valuenow', String(phase === 'done' ? 100 : pct))
   const found = formatCount(hits.length, lang)
-  const checked = formatCount(lastProgress.checked, lang)
-  const total = formatCount(lastProgress.total, lang)
-  if (phase === 'error') progressText.textContent = t('scanError')
-  else if (phase === 'stopped') progressText.textContent = t('scanStopped', found, checked)
-  else if (phase === 'done') progressText.textContent = t('scanDone', found, checked)
-  else progressText.textContent = t('progress', checked, total, found)
+  const checkedText = formatCount(checked, lang)
+  const totalText = formatCount(total, lang)
+  if (phase === 'paused') progressText.textContent = t('pausedFail')
+  else if (phase === 'done') progressText.textContent = t('scanDone', found, checkedText)
+  else if (phase === 'stopped') progressText.textContent = t('scanStopped', found, checkedText)
+  else progressText.textContent = t('progress', checkedText, totalText, found)
+  const parts = [t('resultsMeta', found)]
+  if (activeLabel && !activeLabel.startsWith('same')) parts.push(t('resultsFor', activeLabel))
+  resultsMeta.textContent = hits.length || activeLabel ? parts.join(' · ') : ''
 }
 
 function renderHit(hit: StoredHit): HTMLLIElement {
@@ -200,10 +212,9 @@ function renderHit(hit: StoredHit): HTMLLIElement {
   const band = document.createElement('small')
   band.textContent = t(`band_${hit.score.band}` as MessageKey)
   score.append(strong, band)
-  score.setAttribute('aria-label', `${t('scoreLabel')} ${strong.textContent} ${band.textContent}`)
   const why = document.createElement('p')
   why.className = 'why'
-  const bits = [op ? op.name[lang] : '', t('matched', activeMotif)]
+  const bits = [op ? op.name[lang] : '']
   for (const tag of hit.score.tags.slice(0, 2)) bits.push(tagText(tag))
   why.textContent = bits.filter(Boolean).join(' · ')
   const actions = document.createElement('div')
@@ -231,8 +242,26 @@ function renderHit(hit: StoredHit): HTMLLIElement {
   return li
 }
 
+function renderResults() {
+  const sorted = visibleHits().sort((a, b) => {
+    if (sortMode === 'number') return a.local < b.local ? -1 : a.local > b.local ? 1 : 0
+    if (sortMode === 'operator') return a.brand < b.brand ? -1 : a.brand > b.brand ? 1 : b.score.score - a.score.score
+    return b.score.score - a.score.score || (a.local < b.local ? -1 : 1)
+  })
+  resultsList.replaceChildren(...sorted.map(renderHit))
+  updateEmpty()
+  updateProgress()
+}
+
+function schedulePaint() {
+  if (paint) return
+  paint = window.requestAnimationFrame(() => {
+    paint = 0
+    renderResults()
+  })
+}
+
 async function copyNumber(local: string, button: HTMLButtonElement) {
-  const original = t('copy')
   try {
     await navigator.clipboard.writeText(local)
     button.textContent = t('copied')
@@ -247,95 +276,182 @@ async function copyNumber(local: string, button: HTMLButtonElement) {
     button.textContent = ok ? t('copied') : t('copyFail')
   }
   window.setTimeout(() => {
-    button.textContent = original
+    button.textContent = t('copy')
   }, 1600)
 }
 
-function renderResults() {
-  const sorted = [...hits].sort((a, b) => {
-    if (sortMode === 'number') return a.local < b.local ? -1 : a.local > b.local ? 1 : 0
-    return b.score.score - a.score.score || (a.local < b.local ? -1 : a.local > b.local ? 1 : 0)
-  })
-  resultsList.replaceChildren(...sorted.map(renderHit))
-  const parts = [t('resultsMeta', formatCount(hits.length, lang))]
-  if (activeMotif) parts.push(t('resultsFor', activeMotif))
-  resultsMeta.textContent = hits.length || activeMotif ? parts.join(' · ') : ''
-  updateEmpty()
+function persistCache() {
+  try {
+    saveChecked(localStorage, cache)
+  } catch {
+    /* storage may be full or blocked */
+  }
 }
 
-function describe(plan: Plan) {
+function waitForResume(signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const finish = (aborting: boolean) => {
+      signal.removeEventListener('abort', onAbort)
+      resumeResolve = null
+      if (aborting) reject(new DOMException('aborted', 'AbortError'))
+      else resolve()
+    }
+    const onAbort = () => finish(true)
+    resumeResolve = () => finish(false)
+    if (signal.aborted) finish(true)
+    else signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+async function execute(fresh: boolean, gen: number) {
+  const plan = currentPlan()
   if (!plan.ok) {
-    preview.textContent = '—'
-    planNote.textContent = t(`err_${plan.error}` as MessageKey)
-    planNote.classList.add('is-bad')
-    if (!running) scanBtn.disabled = true
+    updatePreview()
     return
   }
-  planNote.classList.remove('is-bad')
-  preview.textContent =
-    plan.masks.length === 1
-      ? groupLocal(plan.masks[0].mask)
-      : t('previewMany', formatCount(plan.masks.length, lang), groupLocal(plan.masks[0].mask))
-  const note = plan.sampled
-    ? t('planSample', formatCount(plan.total, lang), formatCount(plan.queue.length, lang), formatCount(plan.masks.length, lang))
-    : t('planAll', formatCount(plan.queue.length, lang), formatCount(plan.masks.length, lang))
-  planNote.textContent = plan.overlap ? `${note} ${t('planOverlap')}` : note
-  if (!running) scanBtn.disabled = plan.queue.length === 0
+  if (fresh || !cursor || signature(plan) !== planSignature) {
+    cursor = createCursor(plan.jobs)
+    masks = plan.jobs.map((item) => item.mask)
+    planSignature = signature(plan)
+    activeLabel = plan.label
+    hits = []
+    lastProgress = { checked: 0, failed: 0, found: 0, total: plan.total, rateLimits: 0 }
+    freshLocal = ''
+  }
+  if (!cursor) return
+  running = true
+  phase = 'running'
+  abort = new AbortController()
+  const signal = abort.signal
+  progress.hidden = false
+  syncButton()
+  schedulePaint()
+  live.textContent = t('started')
+  try {
+    const outcome = await scan({
+      cursor,
+      masks,
+      signal,
+      workers: 2,
+      check: checkAvailability,
+      lookup: (local, brand) => verdict(cache, brand, local),
+      remember(local, brand, available) {
+        note(cache, brand, local, available)
+        saves += 1
+        if (saves % 25 === 0) persistCache()
+      },
+      onHit(hit) {
+        if (!masks.some((mask) => matchesMask(mask, hit.local))) return
+        freshLocal = hit.local
+        hits.push({ local: hit.local, brand: hit.brand, score: vipScore(hit.local) })
+        schedulePaint()
+      },
+      onProgress(next) {
+        lastProgress = next
+        schedulePaint()
+      },
+      onPause() {
+        phase = 'paused'
+        syncButton()
+        live.textContent = t('pausedFail')
+      },
+      onRateLimit() {
+        rateNote.hidden = false
+      },
+      waitForResume,
+    })
+    if (gen !== generation) return
+    phase = outcome.status === 'done' ? 'done' : outcome.status === 'paused' ? 'paused' : 'stopped'
+    const found = formatCount(hits.length, lang)
+    const checked = formatCount(outcome.checked, lang)
+    live.textContent =
+      phase === 'paused' ? t('pausedFail') : phase === 'done' ? t('scanDone', found, checked) : t('scanStopped', found, checked)
+  } catch {
+    if (gen !== generation) return
+    phase = signal.aborted ? 'stopped' : 'paused'
+  } finally {
+    if (gen === generation) {
+      running = false
+      persistCache()
+      syncButton()
+      schedulePaint()
+    }
+  }
 }
 
-function updatePreview() {
-  describe(buildPlan(readInput()))
+function begin(fresh: boolean) {
+  if (phase === 'paused' && resumeResolve && !fresh) {
+    phase = 'running'
+    syncButton()
+    resumeResolve()
+    return
+  }
+  const gen = ++generation
+  abort?.abort()
+  tail = tail
+    .catch(() => undefined)
+    .then(() => execute(fresh, gen))
 }
 
-function renderChips() {
-  const prefix = currentOp().prefix
-  chipBox.replaceChildren()
-  for (const series of seriesOf(prefix)) {
+function renderQuick() {
+  quickBox.replaceChildren()
+  for (const item of QUICK) {
     const button = document.createElement('button')
     button.type = 'button'
-    button.className = 'chip'
-    button.textContent = series
-    button.dataset.block = series
-    button.setAttribute('aria-pressed', selectedChips.has(series) ? 'true' : 'false')
+    button.className = item.key ? 'word' : ''
+    button.dataset.quick = item.id
+    button.textContent = item.key ? t(item.key) : (item.text ?? item.id)
+    button.setAttribute('aria-pressed', item.id === activeQuick ? 'true' : 'false')
     button.addEventListener('click', () => {
-      if (selectedChips.has(series)) selectedChips.delete(series)
-      else selectedChips.add(series)
-      button.setAttribute('aria-pressed', selectedChips.has(series) ? 'true' : 'false')
-      syncSeriesButton()
+      activeQuick = item.id
+      renderQuick()
+      if (item.id === 'birthday') {
+        queryInput.placeholder = '01011990'
+        special = null
+        queryInput.focus()
+        updatePreview()
+        if (queryInput.value.replace(/\D/g, '').length >= 4) begin(true)
+        return
+      }
+      if (item.id === 'same3' || item.id === 'same4') {
+        special = item.id
+        queryInput.value = ''
+        updatePreview()
+        begin(true)
+        return
+      }
+      special = null
+      queryInput.value = item.id
       updatePreview()
+      begin(true)
     })
-    chipBox.append(button)
+    quickBox.append(button)
   }
-  syncSeriesButton()
 }
 
-function renderDigits() {
-  digitsBox.replaceChildren()
-  for (let digit = 0; digit <= 9; digit++) {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'digit-btn'
-    button.textContent = String(digit)
-    button.setAttribute('aria-pressed', digit === repeatDigit ? 'true' : 'false')
-    button.addEventListener('click', () => {
-      repeatDigit = digit
-      for (const peer of digitsBox.querySelectorAll('button')) peer.setAttribute('aria-pressed', 'false')
-      button.setAttribute('aria-pressed', 'true')
-      updatePreview()
-    })
-    digitsBox.append(button)
-  }
+function syncThemeButton() {
+  const dark = theme === 'dark'
+  themeBtn.setAttribute('aria-pressed', dark ? 'true' : 'false')
+  themeBtn.setAttribute('aria-label', t(dark ? 'themeToLight' : 'themeToDark'))
+  setHidden(iconSun, !dark)
+  setHidden(iconMoon, dark)
+}
+
+function applyTheme(next: 'light' | 'dark') {
+  theme = next
+  document.documentElement.dataset.theme = next
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#14202B' : '#F3F5F8')
+  syncThemeButton()
 }
 
 function applyI18n() {
   document.documentElement.lang = lang
   document.title = t('title')
   document.querySelector('meta[name="description"]')?.setAttribute('content', t('description'))
-  const ogTitle = document.querySelector('meta[property="og:title"]')
-  ogTitle?.setAttribute('content', t('title'))
+  document.querySelector('meta[property="og:title"]')?.setAttribute('content', t('title'))
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
     const key = el.dataset.i18n as MessageKey
-    if (el === scanBtn || el === allSeriesBtn || el === langBtn) return
+    if (el === scanBtn || el === langBtn) return
     el.textContent = t(key)
   })
   document.querySelectorAll<HTMLElement>('[data-i18n-aria]').forEach((el) => {
@@ -344,105 +460,14 @@ function applyI18n() {
   })
   langBtn.textContent = t('langBtn')
   langBtn.setAttribute('aria-label', t('langAria'))
-  const robi = operatorById('robi')
-  const airtel = operatorById('airtel')
-  footRobi.href = robi.buy[lang]
-  footAirtel.href = airtel.buy[lang]
-  syncScanButton()
-  syncSeriesButton()
+  if (queryInput.placeholder !== '01011990') queryInput.placeholder = lang === 'bn' ? '5555 বা 018XX5555' : '5555 or 018XX5555'
+  resultFilter.placeholder = t('filterPlaceholder')
+  footRobi.href = operatorById('robi').buy[lang]
+  footAirtel.href = operatorById('airtel').buy[lang]
+  renderQuick()
   syncThemeButton()
   updatePreview()
-  updateProgress()
   renderResults()
-}
-
-function onOperator() {
-  const op = currentOp()
-  const block = blockInput.value.replace(/\D/g, '')
-  if (!block.startsWith(op.prefix)) blockInput.value = `${op.prefix}15`
-  selectedChips = new Set()
-  if (!running) {
-    hits = []
-    activeMotif = ''
-    phase = 'idle'
-    lastProgress = null
-    progress.hidden = true
-    renderResults()
-  }
-  renderChips()
-  updatePreview()
-}
-
-function onKind() {
-  const kind = currentKind()
-  if (kind === 'custom' && customInput.value.trim() === '') {
-    const plan = buildPlan({ ...readInput(), kind: kindBeforeCustom })
-    if (plan.ok && plan.masks[0]) customInput.value = plan.masks[0].mask
-  }
-  if (kind !== 'custom') kindBeforeCustom = kind
-  syncPanels()
-  updatePreview()
-}
-
-async function onSubmit(event: Event) {
-  event.preventDefault()
-  if (running) {
-    abort?.abort()
-    return
-  }
-  const plan = buildPlan(readInput())
-  if (!plan.ok || plan.queue.length === 0) {
-    updatePreview()
-    return
-  }
-  running = true
-  phase = 'running'
-  abort = new AbortController()
-  hits = []
-  activeMotif = plan.motif.length === 11 ? groupLocal(plan.motif) : plan.motif
-  lastProgress = { checked: 0, failed: 0, found: 0, total: plan.queue.length }
-  fields.disabled = true
-  syncScanButton()
-  renderResults()
-  updateProgress()
-  live.textContent = t('started')
-  const op = currentOp()
-  const signal = abort.signal
-  try {
-    const outcome = await scan({
-      queue: plan.queue,
-      masks: plan.masks.map((mask) => mask.mask),
-      brand: op.brand,
-      prefix: op.prefix,
-      signal,
-      workers: 2,
-      check: checkAvailability,
-      onHit(hit) {
-        freshLocal = hit.local
-        hits.push({ ...hit, score: vipScore(hit.local) })
-        renderResults()
-      },
-      onProgress(next) {
-        lastProgress = next
-        updateProgress()
-      },
-    })
-    phase = outcome.status
-  } catch {
-    phase = signal.aborted ? 'stopped' : 'error'
-  } finally {
-    running = false
-    fields.disabled = false
-    syncScanButton()
-    updatePreview()
-    updateProgress()
-    updateEmpty()
-    const found = formatCount(hits.length, lang)
-    const checked = formatCount(lastProgress?.checked ?? 0, lang)
-    if (phase === 'error') live.textContent = t('scanError')
-    else if (phase === 'stopped') live.textContent = t('scanStopped', found, checked)
-    else live.textContent = t('scanDone', found, checked)
-  }
 }
 
 function bind() {
@@ -457,58 +482,60 @@ function bind() {
     localStorage.setItem('nsedo-theme', next)
     applyTheme(next)
   })
-  const media = window.matchMedia('(prefers-color-scheme: dark)')
-  media.addEventListener('change', (event) => {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (event) => {
     if (!followSystem) return
     applyTheme(event.matches ? 'dark' : 'light')
   })
-  form.addEventListener('submit', onSubmit)
-  form.addEventListener('change', (event) => {
-    const target = event.target
-    if (!(target instanceof HTMLInputElement)) {
-      updatePreview()
+  form.addEventListener('submit', (event) => {
+    event.preventDefault()
+    if (running && phase === 'paused') {
+      begin(false)
       return
     }
-    if (target.name === 'op') onOperator()
-    else if (target.name === 'kind') onKind()
-    else updatePreview()
+    if (running) {
+      abort?.abort()
+      return
+    }
+    const plan = currentPlan()
+    const reuse = plan.ok && cursor && signature(plan) === planSignature && lastProgress && lastProgress.checked < lastProgress.total
+    begin(!reuse)
+  })
+  queryInput.addEventListener('input', () => {
+    queryInput.value = queryInput.value.toUpperCase().replace(/[^0-9X]/g, '').slice(0, 11)
+    special = null
+    activeQuick = ''
+    for (const button of quickBox.querySelectorAll('button')) button.setAttribute('aria-pressed', 'false')
+    updatePreview()
   })
   blockInput.addEventListener('input', () => {
     blockInput.value = blockInput.value.replace(/\D/g, '').slice(0, 8)
     updatePreview()
   })
-  endingInput.addEventListener('input', () => {
-    endingInput.value = endingInput.value.replace(/\D/g, '').slice(0, 6)
-    updatePreview()
-  })
-  customInput.addEventListener('input', () => {
-    customInput.value = customInput.value.toUpperCase().replace(/[^0-9X]/g, '').slice(0, 11)
-    updatePreview()
-  })
-  for (const input of [pairA, pairB]) {
-    input.addEventListener('input', () => {
-      input.value = input.value.replace(/\D/g, '').slice(0, 1)
-      updatePreview()
-    })
-  }
-  capSelect.addEventListener('change', updatePreview)
-  seqStart.addEventListener('change', updatePreview)
-  allSeriesBtn.addEventListener('click', () => {
-    const series = seriesOf(currentOp().prefix)
-    const allOn = series.every((item) => selectedChips.has(item))
-    selectedChips = allOn ? new Set() : new Set(series)
-    renderChips()
-    updatePreview()
+  form.addEventListener('change', (event) => {
+    const target = event.target
+    if (target instanceof HTMLInputElement && (target.name === 'scope' || target.name === 'pos')) updatePreview()
   })
   sortSelect.addEventListener('change', () => {
-    sortMode = sortSelect.value === 'number' ? 'number' : 'score'
+    sortMode = sortSelect.value === 'number' ? 'number' : sortSelect.value === 'operator' ? 'operator' : 'score'
     renderResults()
   })
+  resultFilter.addEventListener('input', () => {
+    filterText = resultFilter.value.replace(/\D/g, '')
+    resultFilter.value = filterText
+    renderResults()
+  })
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-filter]')) {
+    button.addEventListener('click', () => {
+      const value = button.dataset.filter
+      filterBrand = value === 'ROBI' || value === 'AIRTEL' ? value : 'all'
+      for (const peer of document.querySelectorAll<HTMLButtonElement>('[data-filter]')) {
+        peer.setAttribute('aria-pressed', peer === button ? 'true' : 'false')
+      }
+      renderResults()
+    })
+  }
 }
 
-renderDigits()
-renderChips()
-syncPanels()
 bind()
 applyI18n()
 applyTheme(theme)
