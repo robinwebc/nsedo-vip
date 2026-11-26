@@ -1,4 +1,4 @@
-const CACHE = 'nsedo-v1'
+const CACHE = 'nsedo-v2'
 
 self.addEventListener('install', () => {
   self.skipWaiting()

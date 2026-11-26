@@ -84,7 +84,7 @@ a { color: var(--cobalt); }
 .skip:focus { top: 12px; }
 
 .wrap {
-  width: min(1120px, calc(100% - 32px));
+  width: min(760px, calc(100% - 32px));
   margin: 0 auto;
 }
 
@@ -503,15 +503,93 @@ input.digit { width: 52px; text-align: center; font-size: 1.1rem; }
   padding: 12px 0 24px;
 }
 
-@media (min-width: 960px) {
-  .layout {
-    grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
-    gap: 40px;
-    align-items: start;
+.search-input {
+  width: 100%;
+  min-height: 56px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .quick {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
   }
+}
 
+.quick button {
+  flex: none;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--chip);
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.quick button.word { font-family: var(--sans); font-weight: 700; }
+
+.quick button[aria-pressed='true'] {
+  background: var(--cobalt);
+  border-color: var(--cobalt);
+  color: var(--on-cobalt);
+}
+
+.advanced { margin: 14px 0 4px; }
+
+.advanced summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--cobalt);
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+
+.advanced-body { padding-top: 8px; }
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.filters input {
+  flex: 1 1 140px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-family: var(--mono);
+}
+
+.filters .chip[aria-pressed='true'] {
+  background: var(--cobalt);
+  border-color: var(--cobalt);
+  color: var(--on-cobalt);
+}
+
+@media (min-width: 960px) {
   .brand-name { font-size: 1.5rem; }
-
   .sheet { padding: 20px 20px 16px; }
 }
 

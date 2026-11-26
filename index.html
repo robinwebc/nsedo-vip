@@ -114,158 +114,65 @@
       <main>
         <div class="intro-block">
           <h1 data-i18n="headline">খালি ভিআইপি নাম্বার</h1>
-          <p class="lede" data-i18n="lede">
-            রবি ও এয়ারটেলের প্রকাশ্য খালি-নাম্বার যাচাই দিয়ে পছন্দের ধাঁচ খুঁজুন। কেনাকাটা শুধু অপারেটরের নিজের সাইটে।
-          </p>
-          <p class="how" data-i18n="how">অপারেটর ও ব্লক বাছুন, ধাঁচ দিন, তারপর যে নাম্বার খালি থাকে সেটি অপারেটরের সাইটে কিনুন।</p>
+          <p class="lede" data-i18n="lede">অঙ্ক বা ধাঁচ লিখুন। রবি ও এয়ারটেল একসাথে খোঁজা হয়, আপনি থামানো পর্যন্ত।</p>
+          <p class="how" data-i18n="how">৫৫৫৫ বা ০১৮XX৫৫৫৫ লিখুন, অথবা নিচের দ্রুত ধাঁচ চাপুন। খালি নাম্বার এখানে এসে জমবে।</p>
         </div>
 
         <div class="layout">
           <form id="search" class="sheet" novalidate>
-            <fieldset id="fields">
-              <div class="field">
-                <div class="field-h"><span class="idx">01</span><span data-i18n="opLabel">অপারেটর</span></div>
-                <div class="choices" role="radiogroup" aria-labelledby="opLabel">
-                  <span id="opLabel" class="vh" data-i18n="opLabel">অপারেটর</span>
-                  <label class="choice">
-                    <input type="radio" name="op" value="robi" checked />
-                    <span data-i18n="robi">রবি</span>
-                    <small class="code">018</small>
-                  </label>
-                  <label class="choice">
-                    <input type="radio" name="op" value="airtel" />
-                    <span data-i18n="airtel">এয়ারটেল</span>
-                    <small class="code">016</small>
-                  </label>
-                </div>
-                <p class="soon" data-i18n="soon">
-                  গ্রামীণফোন (017/013), বাংলালিংক (019/014) ও টেলিটক (015) — শিগগিরই। এদের জন্য ব্যবহারযোগ্য প্রকাশ্য
-                  খালি-নাম্বার যাচাই পাওয়া যায়নি।
-                </p>
-              </div>
+            <label class="field-h" for="q" data-i18n="queryLabel">কোন নাম্বার?</label>
+            <input id="q" class="search-input" inputmode="text" autocomplete="off" spellcheck="false" autocapitalize="characters" enterkeyhint="search" placeholder="5555 বা 018XX5555" aria-describedby="queryHint planNote" />
+            <p class="hint" id="queryHint" data-i18n="queryHint">যেমন 5555, 1234, 01011990, অথবা 018XX5555। X মানে যেকোনো অঙ্ক।</p>
+            <p class="sub-label" id="quickLabel" data-i18n="quickLabel">দ্রুত ধাঁচ</p>
+            <div class="quick" id="quick" role="group" aria-labelledby="quickLabel"></div>
 
-              <div class="field" id="panelBlock">
-                <div class="field-h"><span class="idx">02</span><label for="blockInput" data-i18n="blockLabel">নাম্বার ব্লক</label></div>
-                <input id="blockInput" class="mono" inputmode="numeric" autocomplete="off" maxlength="8" value="01815" spellcheck="false" />
-                <p class="hint" id="blockHint" data-i18n="blockHint">
-                  নির্দিষ্ট ব্লক, যেমন 01815। সিরিজের চিপ বেছে অনেক ব্লক একসাথে স্ক্যান করা যায়।
-                </p>
-                <div class="series-row">
-                  <div id="chipBox" class="chips" role="group" aria-labelledby="blockHint"></div>
-                  <button type="button" class="text-btn" id="allSeriesBtn" data-i18n="allSeries">সব সিরিজ</button>
+            <details class="advanced" id="advanced">
+              <summary data-i18n="advanced">আরও নিয়ন্ত্রণ</summary>
+              <div class="advanced-body">
+                <div class="field">
+                  <div class="field-h"><span data-i18n="opLabel">অপারেটর</span></div>
+                  <div class="choices">
+                    <label class="choice"><input type="radio" name="scope" value="all" checked /><span data-i18n="scopeAll">রবি + এয়ারটেল</span></label>
+                    <label class="choice"><input type="radio" name="scope" value="robi" /><span data-i18n="robi">রবি</span><small class="code">018</small></label>
+                    <label class="choice"><input type="radio" name="scope" value="airtel" /><span data-i18n="airtel">এয়ারটেল</span><small class="code">016</small></label>
+                  </div>
+                  <p class="soon" data-i18n="soon">গ্রামীণফোন (017/013), বাংলালিংক (019/014) ও টেলিটক (015) — শিগগিরই। এদের জন্য ব্যবহারযোগ্য প্রকাশ্য খালি-নাম্বার যাচাই পাওয়া যায়নি।</p>
                 </div>
-              </div>
-
-              <div class="field">
-                <div class="field-h"><span class="idx">03</span><span data-i18n="kindLabel">ধাঁচ</span></div>
-                <div class="choices kinds" role="radiogroup">
-                  <label class="choice"><input type="radio" name="kind" value="repeat" checked /><span data-i18n="repeat">একই অঙ্ক</span></label>
-                  <label class="choice"><input type="radio" name="kind" value="sequence" /><span data-i18n="sequence">ক্রম</span></label>
-                  <label class="choice"><input type="radio" name="kind" value="mirror" /><span data-i18n="mirror">আয়না (ABBA)</span></label>
-                  <label class="choice"><input type="radio" name="kind" value="abab" /><span data-i18n="abab">জোড়া (ABAB)</span></label>
-                  <label class="choice"><input type="radio" name="kind" value="ending" /><span data-i18n="ending">নির্দিষ্ট শেষ</span></label>
-                  <label class="choice"><input type="radio" name="kind" value="custom" /><span data-i18n="custom">নিজের মাস্ক</span></label>
-                </div>
-
-                <div id="panelRepeat" class="sub">
-                  <p class="sub-label" data-i18n="digitLabel">অঙ্ক</p>
-                  <div id="digits" class="digits" role="group"></div>
-                  <p class="sub-label" data-i18n="lenLabel">দৈর্ঘ্য</p>
-                  <div class="choices compact">
-                    <label class="choice"><input type="radio" name="rlen" value="3" /><span>3</span></label>
-                    <label class="choice"><input type="radio" name="rlen" value="4" checked /><span>4</span></label>
-                    <label class="choice"><input type="radio" name="rlen" value="5" /><span>5</span></label>
-                    <label class="choice"><input type="radio" name="rlen" value="6" /><span>6</span></label>
+                <div class="field">
+                  <div class="field-h"><span data-i18n="posLabel">ধাঁচের জায়গা</span></div>
+                  <div class="choices">
+                    <label class="choice"><input type="radio" name="pos" value="end" checked /><span data-i18n="end">শেষে</span></label>
+                    <label class="choice"><input type="radio" name="pos" value="start" /><span data-i18n="start">শুরুতে</span></label>
+                    <label class="choice"><input type="radio" name="pos" value="middle" /><span data-i18n="middle">মাঝখানে</span></label>
                   </div>
                 </div>
-
-                <div id="panelSeq" class="sub" hidden>
-                  <div class="split">
-                    <label class="grow" for="seqStart"><span data-i18n="seqStart">শুরুর অঙ্ক</span>
-                      <select id="seqStart">
-                        <option>0</option><option selected>1</option><option>2</option><option>3</option><option>4</option>
-                        <option>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
-                      </select>
-                    </label>
-                  </div>
-                  <p class="sub-label" data-i18n="lenLabel">দৈর্ঘ্য</p>
-                  <div class="choices compact">
-                    <label class="choice"><input type="radio" name="seqlen" value="3" /><span>3</span></label>
-                    <label class="choice"><input type="radio" name="seqlen" value="4" checked /><span>4</span></label>
-                    <label class="choice"><input type="radio" name="seqlen" value="5" /><span>5</span></label>
-                  </div>
-                  <p class="sub-label" data-i18n="seqDir">দিক</p>
-                  <div class="choices compact">
-                    <label class="choice"><input type="radio" name="seqdir" value="up" checked /><span data-i18n="up">বাড়তি</span></label>
-                    <label class="choice"><input type="radio" name="seqdir" value="down" /><span data-i18n="down">কমতি</span></label>
-                  </div>
-                </div>
-
-                <div id="panelPair" class="sub" hidden>
-                  <p class="sub-label" data-i18n="pairLabel">দুই অঙ্ক</p>
-                  <div class="pair">
-                    <label class="vh" for="pairA">A</label>
-                    <input id="pairA" class="mono digit" inputmode="numeric" maxlength="1" value="1" />
-                    <label class="vh" for="pairB">B</label>
-                    <input id="pairB" class="mono digit" inputmode="numeric" maxlength="1" value="2" />
-                  </div>
-                </div>
-
-                <div id="panelEnding" class="sub" hidden>
-                  <label class="sub-label" for="endingInput" data-i18n="endingLabel">শেষের অঙ্ক</label>
-                  <input id="endingInput" class="mono" inputmode="numeric" maxlength="6" value="5555" autocomplete="off" />
-                  <p class="hint" data-i18n="endingHint">২ থেকে ৬ অঙ্ক। এই ধাঁচ সবসময় নাম্বারের শেষে বসে।</p>
-                </div>
-
-                <div id="panelCustom" class="sub" hidden>
-                  <label class="sub-label" for="customInput" data-i18n="customLabel">মাস্ক</label>
-                  <input id="customInput" class="mono" maxlength="13" spellcheck="false" autocapitalize="characters" autocomplete="off" placeholder="01815XX5555" />
-                  <p class="hint" data-i18n="customHint">১১ ঘর। X মানে যেকোনো অঙ্ক। যেমন 0181XXX5555।</p>
+                <div class="field">
+                  <label class="field-h" for="blockInput" data-i18n="blockLabel">নাম্বার ব্লক</label>
+                  <input id="blockInput" class="mono" inputmode="numeric" autocomplete="off" maxlength="8" spellcheck="false" placeholder="01815" />
+                  <p class="hint" data-i18n="blockHint">খালি রাখলে পুরো 018 ও 016 খোঁজা হয়। 01815 লিখলে শুধু সেই ব্লক।</p>
                 </div>
               </div>
+            </details>
 
-              <div class="field" id="panelPos">
-                <div class="field-h"><span class="idx">04</span><span data-i18n="posLabel">ধাঁচের জায়গা</span></div>
-                <div class="choices" role="radiogroup">
-                  <label class="choice"><input type="radio" name="pos" value="start" /><span data-i18n="start">শুরুতে</span></label>
-                  <label class="choice"><input type="radio" name="pos" value="middle" /><span data-i18n="middle">মাঝখানে</span></label>
-                  <label class="choice"><input type="radio" name="pos" value="end" checked /><span data-i18n="end">শেষে</span></label>
-                </div>
-              </div>
-
-              <div class="field">
-                <label class="field-h" for="capSelect"><span data-i18n="capLabel">বড় খোঁজের সীমা</span></label>
-                <select id="capSelect">
-                  <option value="40">40</option>
-                  <option value="80" selected>80</option>
-                  <option value="160">160</option>
-                  <option value="320">320</option>
-                </select>
-                <p class="hint" data-i18n="capHint">১৫০টির কম হলে সব যাচাই হয়। তার বেশি হলে এই সীমা পর্যন্ত ছড়িয়ে নমুনা নেওয়া হয়।</p>
-              </div>
-
-              <div class="preview-box">
-                <p id="preview" class="preview" translate="no">01815-XX5555</p>
-                <p id="planNote" class="hint"></p>
-              </div>
-            </fieldset>
+            <div class="preview-box">
+              <p id="preview" class="preview" translate="no">—</p>
+              <p id="planNote" class="hint"></p>
+            </div>
 
             <div class="notice">
               <p class="notice-title" data-i18n="noticeTitle">বিজ্ঞপ্তি</p>
-              <p data-i18n="notice">
-                খালি কি না, তা রবি ও এয়ারটেলের প্রকাশ্য যাচাই থেকে আসে। এই সাইট টাকা নেয় না, নাম, ফোন বা এনআইডিও নেয় না।
-                কেনা হয় শুধু অপারেটরের নিজের সাইটে। যে নাম্বার এখন খালি, পরে বিক্রি হয়ে যেতে পারে।
-              </p>
+              <p data-i18n="notice">খালি কি না, তা রবি ও এয়ারটেলের প্রকাশ্য যাচাই থেকে আসে। এই সাইট টাকা নেয় না, নাম, ফোন বা এনআইডিও নেয় না। কেনা হয় শুধু অপারেটরের নিজের সাইটে। যে নাম্বার এখন খালি, পরে বিক্রি হয়ে যেতে পারে।</p>
             </div>
 
             <button type="submit" class="primary" id="scanBtn" data-i18n="startScan">খোঁজা শুরু করুন</button>
-            <p class="hint polite" data-i18n="polite">একবারে অল্প কয়েকটি যাচাই হয়, যাতে অপারেটরের সার্ভারে চাপ না পড়ে।</p>
+            <p class="hint polite" data-i18n="polite">একবারে অল্প কয়েকটি যাচাই হয়, যাতে অপারেটরের সার্ভারে চাপ না পড়ে। খোঁজা আপনি থামানো পর্যন্ত চলে।</p>
 
             <div id="progress" hidden>
               <div id="bar" class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-labelledby="progressText">
                 <span id="barFill"></span>
               </div>
               <p id="progressText"></p>
+              <p id="rateNote" class="hint" hidden data-i18n="rateNote">অপারেটর অনুরোধ সীমিত করেছে। একটু ধীরে আবার চেষ্টা হচ্ছে।</p>
             </div>
           </form>
 
@@ -280,10 +187,20 @@
                 <select id="sort">
                   <option value="score" data-i18n="sortScore">স্কোর</option>
                   <option value="number" data-i18n="sortNumber">নাম্বার</option>
+                  <option value="operator" data-i18n="sortOperator">অপারেটর</option>
                 </select>
               </label>
             </div>
-            <p id="empty" class="empty" data-i18n="emptyIdle">ধাঁচ বাছুন, তারপর খোঁজা শুরু করুন। এখানে শুধু খালি নাম্বার আসবে।</p>
+            <div class="filters">
+              <div class="choices compact" role="group" aria-labelledby="filterLabel">
+                <span id="filterLabel" class="vh" data-i18n="filterLabel">ফিল্টার</span>
+                <button type="button" class="chip" data-filter="all" aria-pressed="true" data-i18n="filterAll">সব</button>
+                <button type="button" class="chip" data-filter="ROBI" aria-pressed="false">018</button>
+                <button type="button" class="chip" data-filter="AIRTEL" aria-pressed="false">016</button>
+              </div>
+              <input id="resultFilter" inputmode="numeric" autocomplete="off" spellcheck="false" data-i18n-aria="filterPlaceholder" placeholder="নাম্বারে খুঁজুন" />
+            </div>
+            <p id="empty" class="empty" data-i18n="emptyIdle">উপরে অঙ্ক লিখুন বা একটি দ্রুত ধাঁচ চাপুন। শুধু খালি নাম্বার এখানে আসবে।</p>
             <ol id="resultsList" class="result-list"></ol>
           </section>
         </div>
